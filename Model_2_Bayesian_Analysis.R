@@ -1,11 +1,11 @@
 # ------------------------------------------------------------------
-# 1. Load data and shorten name for convenience
+# Load data and shorten name for convenience
 # ------------------------------------------------------------------
 
 df <- THESIS.COMBINED.Complete.case.26.week.follow.up.data
 
 # ------------------------------------------------------------------
-# 2. Fix miscoded missing values
+# Fix miscoded missing values
 # ------------------------------------------------------------------
 # BASELINE_CQCPR_20 had 0s that were actually missing-value codes,
 # not genuine scores (confirmed against jamovi: 3 missing cases,
@@ -14,7 +14,7 @@ df <- THESIS.COMBINED.Complete.case.26.week.follow.up.data
 df$BASELINE_CQCPR_20[df$BASELINE_CQCPR_20 == 0] <- NA
 
 # ------------------------------------------------------------------
-# 3. Filter to complete cases on the variables needed for the model
+# Filter to complete cases on the variables needed for the model
 # ------------------------------------------------------------------
 # Matches model 1's complete-case approach.
 
@@ -26,7 +26,7 @@ df_complete <- df[complete.cases(df[, c("ADAS_20_FU2",
 nrow(df_complete)   # sample size after filtering (258)
 
 # ------------------------------------------------------------------
-# 4. Standardise BASELINE_CQCPR_20 (QPRC) into a z-score
+# Standardise BASELINE_CQCPR_20 (QPRC) into a z-score
 # ------------------------------------------------------------------
 
 > # c_BASELINE_ADAScog is left as centered-only (raw ADAS-cog points),
@@ -158,3 +158,93 @@ fit_pessimistic <- brm(
 summary(fit_primary)$fixed["RandomisationiCST", ]
 summary(fit_optimistic)$fixed["RandomisationiCST", ]
 summary(fit_pessimistic)$fixed["RandomisationiCST", ]
+
+# ------------------------------------------------------------------
+# Interaction term: estimate and posterior probabilities
+# ------------------------------------------------------------------
+
+summary(fit_primary)$fixed["RandomisationiCST:z_BASELINE_CQCPR_20", ]
+
+hypothesis(fit_primary, "RandomisationiCST:z_BASELINE_CQCPR_20 > 0")
+hypothesis(fit_primary, "RandomisationiCST:z_BASELINE_CQCPR_20 < 0")
+
+# ------------------------------------------------------------------
+# DIAGNOSTIC PLOTS
+# ------------------------------------------------------------------
+
+# Trace plots for convergence
+plot(fit_primary)
+
+# Rhat at a glance
+mcmc_rhat(rhat(fit_primary))
+
+# Posterior predictive check - does the model reproduce observed data?
+pp_check(fit_primary, ndraws = 100)
+pp_check(fit_primary, type = "stat", stat = "mean")
+
+# ------------------------------------------------------------------
+# COEFFICIENT / FOREST PLOT
+# ------------------------------------------------------------------
+
+fit_primary %>%
+  gather_draws(b_c_BASELINE_ADAScog, b_RandomisationiCST,
+               b_z_BASELINE_CQCPR_20, `b_RandomisationiCST:z_BASELINE_CQCPR_20`) %>%
+  ggplot(aes(y = .variable, x = .value)) +
+  stat_halfeye() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(x = "Estimate", y = NULL,
+       title = "Posterior distributions of Model 2 fixed effects") +
+  theme_minimal()
+
+# ------------------------------------------------------------------
+# TREATMENT EFFECT POSTERIOR (single parameter highlight)
+# ------------------------------------------------------------------
+
+mcmc_areas(fit_primary, pars = "b_RandomisationiCST", prob = 0.95) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(title = "Posterior distribution: iCST treatment effect")
+
+# ------------------------------------------------------------------
+# INTERACTION / MODERATION PLOT
+# ------------------------------------------------------------------
+# This is the key plot answering the research question: does QPRC
+# moderate the iCST treatment effect on ADAS-cog at 26 weeks?
+
+conditional_effects(fit_primary, effects = "z_BASELINE_CQCPR_20:Randomisation")
+
+# ------------------------------------------------------------------
+# SENSITIVITY ANALYSIS COMPARISON PLOT
+# ------------------------------------------------------------------
+# Overlays the treatment effect posterior across all three priors,
+# showing how much the conclusion depends on prior choice.
+
+draws_primary <- as_draws_df(fit_primary) %>%
+  select(b_RandomisationiCST) %>%
+  mutate(prior_type = "Primary")
+
+draws_optimistic <- as_draws_df(fit_optimistic) %>%
+  select(b_RandomisationiCST) %>%
+  mutate(prior_type = "Optimistic")
+
+draws_pessimistic <- as_draws_df(fit_pessimistic) %>%
+  select(b_RandomisationiCST) %>%
+  mutate(prior_type = "Pessimistic")
+
+all_draws <- bind_rows(draws_primary, draws_optimistic, draws_pessimistic)
+
+ggplot(all_draws, aes(x = b_RandomisationiCST, fill = prior_type)) +
+  geom_density(alpha = 0.4) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(x = "Treatment effect (iCST vs TAU Control)", y = "Density",
+       fill = "Prior specification",
+       title = "Sensitivity analysis: treatment effect across prior specifications") +
+  theme_minimal()
+
+# ------------------------------------------------------------------
+# Save fitted models
+# ------------------------------------------------------------------
+
+saveRDS(fit_primary, "fit_primary.rds")
+saveRDS(fit_optimistic, "fit_optimistic.rds")
+saveRDS(fit_pessimistic, "fit_pessimistic.rds")
+
