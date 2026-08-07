@@ -56,7 +56,7 @@ nrow(df_complete)   # sample size after filtering (258)
   [1] 1
   > 
   # ------------------------------------------------------------------
-# MULTICOLLINEARITY (Variance Inflation Factor)
+# Multicollinearity check
 # ------------------------------------------------------------------
 # VIF checks whether predictors are too strongly correlated with each
 # other, which would inflate standard errors / posterior uncertainty.
@@ -82,7 +82,7 @@ cor(df_complete$c_BASELINE_ADAScog, df_complete$z_BASELINE_CQCPR_20,
     use = "complete.obs")
 
 # ------------------------------------------------------------------
-# LINEARITY
+# Linearity Check
 # ------------------------------------------------------------------
 # Checks whether the relationship between each continuous predictor
 # and the outcome is reasonably linear (as assumed by the model),
@@ -163,7 +163,7 @@ library(corrplot)
 corrplot(cor_matrix, method = "number", type = "upper",
          tl.col = "black", tl.srt = 45)
   
-  ## ------------------------------------------------------------------
+## ------------------------------------------------------------------
 ## Prior specification
 ## ------------------------------------------------------------------
 ## Coefficient names below assume Randomisation is coded with a
