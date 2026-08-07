@@ -164,7 +164,7 @@ corrplot(cor_matrix, method = "number", type = "upper",
          tl.col = "black", tl.srt = 45)
   
   ## ------------------------------------------------------------------
-## Model 2: Prior specification
+## Prior specification
 ## ------------------------------------------------------------------
 ## Coefficient names below assume Randomisation is coded with a
 ## reference level (e.g. "TAU") and one treatment level - check the
@@ -178,7 +178,7 @@ get_prior(adas_formula, data = df_complete)
 # "RandomisationiCST".
 
 # ------------------------------------------------------------------
-# PRIMARY PRIORS
+# Primary Priors
 # ------------------------------------------------------------------
 
 priors_primary <- c(
@@ -206,7 +206,7 @@ priors_primary <- c(
 validate_prior(priors_primary, adas_formula, data = df_complete)
 
 # ------------------------------------------------------------------
-# SENSITIVITY ANALYSIS: OPTIMISTIC TREATMENT PRIOR
+# Optimistic Model
 # ------------------------------------------------------------------
 
 priors_optimistic <- priors_primary
@@ -214,7 +214,7 @@ priors_optimistic[priors_optimistic$coef == "RandomisationiCST" &
                     priors_optimistic$class == "b", "prior"] <- "normal(-2.9, 2)"
 
 # ------------------------------------------------------------------
-# SENSITIVITY ANALYSIS: PESSIMISTIC TREATMENT PRIOR
+# Pessimistic Model
 # ------------------------------------------------------------------
 
 priors_pessimistic <- priors_primary
@@ -222,7 +222,7 @@ priors_pessimistic[priors_pessimistic$coef == "RandomisationiCST" &
                      priors_pessimistic$class == "b", "prior"] <- "normal(-0.5, 2)"
 
 # ------------------------------------------------------------------
-# FIT: PRIMARY MODEL
+# Primary Model
 # ------------------------------------------------------------------
 
 fit_primary <- brm(
@@ -241,7 +241,7 @@ fit_primary <- brm(
 summary(fit_primary)
 
 # ------------------------------------------------------------------
-# FIT: SENSITIVITY MODELS
+# Sensitivity Models
 # ------------------------------------------------------------------
 
 fit_optimistic <- brm(
@@ -275,6 +275,74 @@ summary(fit_primary)$fixed["RandomisationiCST", ]
 summary(fit_optimistic)$fixed["RandomisationiCST", ]
 summary(fit_pessimistic)$fixed["RandomisationiCST", ]
 
+
+# ============================================================
+# Run predictive checks
+# ============================================================
+
+p_prior <- pp_check(prior_check_original, ndraws = 100) +
+  labs(title = "Prior Predictive Check",
+       x = "ADAS-Cog score",
+       y = "Density") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+p_posterior <- pp_check(fit_primary, ndraws = 100) +
+  labs(title = "Posterior Predictive Check",
+       x = "ADAS-Cog score",
+       y = "Density") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+library(patchwork)
+
+combined_plot <- (p_prior | p_posterior) +
+  plot_annotation(
+    title = "Prior and Posterior Predictive Checks",
+    theme = theme(plot.title = element_text(face = "italic", size = 14))
+  )
+
+combined_plot
+
+# ============================================================
+# Overlaid Posterior Distributions with Probability Labels
+# ============================================================
+
+install.packages("ggrepel")
+library(ggrepel)
+
+overlay_plot <- ggplot(all_draws, aes(x = b_RandomisationiCST, fill = prior_type,
+                                      color = prior_type)) +
+  geom_density(alpha = 0.35, linewidth = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  geom_label_repel(
+    data = prob_labels,
+    aes(x = mean_est, y = label_y, label = label, color = prior_type),
+    inherit.aes = FALSE,
+    size = 3.5, fontface = "bold",
+    show.legend = FALSE,
+    box.padding = 0.5,
+    max.overlaps = Inf,
+    min.segment.length = Inf   # this removes the connector lines entirely
+  ) +
+  labs(
+    title = "Posterior Distributions of Treatment Effect by Prior Specification",
+    subtitle = "iCST vs TAU Control on ADAS-Cog at 26 weeks",
+    x = "Treatment effect (\u03b2)",
+    y = "Density",
+    fill = "Prior specification",
+    color = "Prior specification"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    legend.position = "bottom"
+  ) +
+  coord_cartesian(clip = "off")
+
+overlay_plot
+
+
 # ------------------------------------------------------------------
 # Interaction term: estimate and posterior probabilities
 # ------------------------------------------------------------------
@@ -285,21 +353,13 @@ hypothesis(fit_primary, "RandomisationiCST:z_BASELINE_CQCPR_20 > 0")
 hypothesis(fit_primary, "RandomisationiCST:z_BASELINE_CQCPR_20 < 0")
 
 # ------------------------------------------------------------------
-# DIAGNOSTIC PLOTS
+# Trace Plots
 # ------------------------------------------------------------------
 
-# Trace plots for convergence
 plot(fit_primary)
 
-# Rhat at a glance
-mcmc_rhat(rhat(fit_primary))
-
-# Posterior predictive check - does the model reproduce observed data?
-pp_check(fit_primary, ndraws = 100)
-pp_check(fit_primary, type = "stat", stat = "mean")
-
 # ------------------------------------------------------------------
-# COEFFICIENT / FOREST PLOT
+# Forest Plot
 # ------------------------------------------------------------------
 
 fit_primary %>%
@@ -312,49 +372,12 @@ fit_primary %>%
        title = "Posterior distributions of Model 2 fixed effects") +
   theme_minimal()
 
-# ------------------------------------------------------------------
-# TREATMENT EFFECT POSTERIOR (single parameter highlight)
-# ------------------------------------------------------------------
-
-mcmc_areas(fit_primary, pars = "b_RandomisationiCST", prob = 0.95) +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  labs(title = "Posterior distribution: iCST treatment effect")
 
 # ------------------------------------------------------------------
-# INTERACTION / MODERATION PLOT
+# Interaction/ Moderation Plot
 # ------------------------------------------------------------------
-# This is the key plot answering the research question: does QPRC
-# moderate the iCST treatment effect on ADAS-cog at 26 weeks?
 
 conditional_effects(fit_primary, effects = "z_BASELINE_CQCPR_20:Randomisation")
-
-# ------------------------------------------------------------------
-# SENSITIVITY ANALYSIS COMPARISON PLOT
-# ------------------------------------------------------------------
-# Overlays the treatment effect posterior across all three priors,
-# showing how much the conclusion depends on prior choice.
-
-draws_primary <- as_draws_df(fit_primary) %>%
-  select(b_RandomisationiCST) %>%
-  mutate(prior_type = "Primary")
-
-draws_optimistic <- as_draws_df(fit_optimistic) %>%
-  select(b_RandomisationiCST) %>%
-  mutate(prior_type = "Optimistic")
-
-draws_pessimistic <- as_draws_df(fit_pessimistic) %>%
-  select(b_RandomisationiCST) %>%
-  mutate(prior_type = "Pessimistic")
-
-all_draws <- bind_rows(draws_primary, draws_optimistic, draws_pessimistic)
-
-ggplot(all_draws, aes(x = b_RandomisationiCST, fill = prior_type)) +
-  geom_density(alpha = 0.4) +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  labs(x = "Treatment effect (iCST vs TAU Control)", y = "Density",
-       fill = "Prior specification",
-       title = "Sensitivity analysis: treatment effect across prior specifications") +
-  theme_minimal()
 
 # ------------------------------------------------------------------
 # Save fitted models
@@ -363,4 +386,35 @@ ggplot(all_draws, aes(x = b_RandomisationiCST, fill = prior_type)) +
 saveRDS(fit_primary, "fit_primary.rds")
 saveRDS(fit_optimistic, "fit_optimistic.rds")
 saveRDS(fit_pessimistic, "fit_pessimistic.rds")
+
+# ------------------------------------------------------------------
+# Summary table of results
+# ------------------------------------------------------------------
+
+reporting_gt <- reporting_table %>%
+  gt() %>%
+  tab_header(
+    title = "Model 2: Posterior Summary of Fixed Effects",
+    subtitle = "ADAS-Cog at 26 weeks ~ Baseline ADAS-Cog + Randomisation x QPRC"
+  ) %>%
+  cols_label(
+    Parameter = "Parameter",
+    Estimate = "Estimate",
+    Est.Error = "SE",
+    `l-95% CI` = "95% CI (lower)",
+    `u-95% CI` = "95% CI (upper)",
+    Rhat = "Rhat",
+    Bulk_ESS = "Bulk ESS",
+    Tail_ESS = "Tail ESS",
+    Posterior_Probability = "Posterior Probability"
+  ) %>%
+  fmt_number(columns = c(Estimate, Est.Error, `l-95% CI`, `u-95% CI`, Rhat,
+                         Posterior_Probability),
+             decimals = 3) %>%
+  sub_missing(columns = Posterior_Probability, missing_text = "\u2014") %>%
+  tab_source_note(source_note = paste0("N = ", nrow(df_complete),
+                                       " complete cases. Posterior probability reflects direction ",
+                                       "consistent with the estimate's sign."))
+
+reporting_gt
 
