@@ -1,4 +1,13 @@
 # ------------------------------------------------------------------
+# Install Packages
+# ------------------------------------------------------------------
+
+install.packages(c(
+  "brms", "tidyverse", "bayesplot", "tidybayes", "loo", "usethis",
+  "performance", "car", "Hmisc", "corrplot"
+))
+
+# ------------------------------------------------------------------
 # Load data and shorten name for convenience
 # ------------------------------------------------------------------
 
@@ -46,7 +55,114 @@ nrow(df_complete)   # sample size after filtering (258)
   > sd(df_complete$z_BASELINE_CQCPR_20, na.rm = TRUE)       # 1
   [1] 1
   > 
+  # ------------------------------------------------------------------
+# MULTICOLLINEARITY (Variance Inflation Factor)
+# ------------------------------------------------------------------
+# VIF checks whether predictors are too strongly correlated with each
+# other, which would inflate standard errors / posterior uncertainty.
+# Rule of thumb: VIF > 5 = concerning, VIF > 10 = serious problem.
 
+# Option A: performance package - works directly on brms objects
+check_collinearity(fit_primary)
+
+# Option B: car::vif - requires an equivalent frequentist lm() model
+# (brms doesn't have its own vif(); this proxy model is only used to
+# check the design matrix, not to draw inferential conclusions from)
+lm_check <- lm(ADAS_20_FU2 ~ c_BASELINE_ADAScog + Randomisation * z_BASELINE_CQCPR_20,
+               data = df_complete)
+vif(lm_check)
+
+# Note: for models with an interaction term, VIF on the interaction
+# itself will often look inflated by construction (this is expected
+# and not usually a concern) - focus mainly on the VIFs for the
+# main effects: c_BASELINE_ADAScog, Randomisation, z_BASELINE_CQCPR_20
+
+# Simple correlation check between the two continuous predictors
+cor(df_complete$c_BASELINE_ADAScog, df_complete$z_BASELINE_CQCPR_20,
+    use = "complete.obs")
+
+# ------------------------------------------------------------------
+# LINEARITY
+# ------------------------------------------------------------------
+# Checks whether the relationship between each continuous predictor
+# and the outcome is reasonably linear (as assumed by the model),
+# rather than curved/non-linear.
+
+# --- 2a. Residuals vs fitted values plot ---
+# Should show a random scatter around 0, with no obvious curve/pattern.
+
+df_complete$fitted_vals <- fitted(fit_primary)[, "Estimate"]
+df_complete$resid_vals  <- residuals(fit_primary)[, "Estimate"]
+
+ggplot(df_complete, aes(x = fitted_vals, y = resid_vals)) +
+  geom_point(alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") +
+  labs(x = "Fitted values", y = "Residuals",
+       title = "Residuals vs Fitted - check for curvature") +
+  theme_minimal()
+
+# --- 2b. Residuals vs each continuous predictor ---
+# A curved smoothed line (rather than flat) suggests a non-linear
+# relationship between that predictor and the outcome.
+
+ggplot(df_complete, aes(x = c_BASELINE_ADAScog, y = resid_vals)) +
+  geom_point(alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") +
+  labs(x = "Baseline ADAS-cog (centered)", y = "Residuals",
+       title = "Residuals vs Baseline ADAS-cog") +
+  theme_minimal()
+
+ggplot(df_complete, aes(x = z_BASELINE_CQCPR_20, y = resid_vals)) +
+  geom_point(alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") +
+  labs(x = "QPRC (z-score)", y = "Residuals",
+       title = "Residuals vs QPRC") +
+  theme_minimal()
+
+# --- 2c. performance package - all-in-one diagnostic panel ---
+# Note: performance::check_model() is built primarily for frequentist
+# models; for brms it will use posterior predictive draws where
+# possible. Can be slow for large models - optional.
+
+# check_model(fit_primary)
+
+# --- 2d. Observed vs predicted scatter (overall model fit check) ---
+ggplot(df_complete, aes(x = fitted_vals, y = ADAS_20_FU2)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(x = "Predicted ADAS_20_FU2", y = "Observed ADAS_20_FU2",
+       title = "Observed vs Predicted - points should hug the diagonal") +
+  theme_minimal()
+
+# ------------------------------------------------------------------
+# Check Correlations
+# ------------------------------------------------------------------
+
+# Select just the continuous variables relevant to the model
+cor_vars <- df_complete[, c("ADAS_20_FU2", "c_BASELINE_ADAScog", "z_BASELINE_CQCPR_20")]
+
+# Basic correlation matrix
+cor_matrix <- cor(cor_vars, use = "complete.obs")
+cor_matrix
+
+# Round for readability
+round(cor_matrix, 3)
+
+# With p-values (tests whether each correlation is significantly different from 0)
+# install.packages("Hmisc")   # if not already installed
+library(Hmisc)
+cor_results <- rcorr(as.matrix(cor_vars))
+cor_results$r   # correlation coefficients
+cor_results$P   # p-values
+
+# Visual correlation matrix (heatmap-style)
+library(corrplot)
+corrplot(cor_matrix, method = "number", type = "upper",
+         tl.col = "black", tl.srt = 45)
+  
   ## ------------------------------------------------------------------
 ## Model 2: Prior specification
 ## ------------------------------------------------------------------
