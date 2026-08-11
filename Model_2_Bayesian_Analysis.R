@@ -418,3 +418,146 @@ reporting_gt <- reporting_table %>%
 
 reporting_gt
 
+## ------------------------------------------------------------------
+## Model 2 Categorical: Interaction using 3-Category QCPR (Round-Number Split)
+## Below 55 (n=74) | 55 to 62 (n=97) | Above 62 (n=87)
+## ------------------------------------------------------------------
+
+library(brms)
+library(dplyr)
+
+# ------------------------------------------------------------------
+# 1. Confirm the categorical variable and set reference level
+# ------------------------------------------------------------------
+# Reference level = "Below 55", so both other coefficients are
+# interpreted relative to the lowest QCPR group.
+
+df_complete$QCPR_3cat_round <- factor(
+  df_complete$QCPR_3cat_round,
+  levels = c("Below 55", "55 to 62", "Above 62")
+)
+
+table(df_complete$QCPR_3cat_round)
+
+# ------------------------------------------------------------------
+# 2. Model formula
+# ------------------------------------------------------------------
+
+adas_formula_3cat <- bf(
+  ADAS_20_FU2 ~ c_BASELINE_ADAScog + Randomisation * QCPR_3cat_round
+)
+
+get_prior(adas_formula_3cat, data = df_complete)
+# Check exact coefficient names before finalising priors - expect:
+# RandomisationiCST, QCPR_3cat_round55to62, QCPR_3cat_roundAbove62,
+# RandomisationiCST:QCPR_3cat_round55to62,
+# RandomisationiCST:QCPR_3cat_roundAbove62
+
+# ------------------------------------------------------------------
+# 3. Priors
+# ------------------------------------------------------------------
+# Same core structure as the primary model. QCPR category and
+# interaction priors are weakly informative (wider SD) given there
+# is no strong prior literature for this specific categorical split.
+
+priors_3cat <- c(
+  prior(normal(20, 7),   class = "Intercept"),
+  prior(normal(0.5, 0.3), class = "b", coef = "c_BASELINE_ADAScog"),
+  prior(normal(-1.92, 2), class = "b", coef = "RandomisationiCST"),
+  prior(normal(0, 5),     class = "b", coef = "QCPR_3cat_round55to62"),
+  prior(normal(0, 5),     class = "b", coef = "QCPR_3cat_roundAbove62"),
+  prior(normal(0, 5),     class = "b",
+        coef = "RandomisationiCST:QCPR_3cat_round55to62"),
+  prior(normal(0, 5),     class = "b",
+        coef = "RandomisationiCST:QCPR_3cat_roundAbove62"),
+  prior(exponential(0.1), class = "sigma")
+)
+
+# NOTE: confirm these coefficient names exactly match your
+# get_prior() output above before running - brms naming for
+# factor levels can vary slightly (e.g. spaces/punctuation removed).
+
+# ------------------------------------------------------------------
+# 4. Fit the model
+# ------------------------------------------------------------------
+
+fit_3cat <- brm(
+  formula = adas_formula_3cat,
+  data    = df_complete,
+  family  = gaussian(),
+  prior   = priors_3cat,
+  chains  = 4,
+  cores   = 4,
+  iter    = 4000,
+  warmup  = 2000,
+  seed    = 1234,
+  control = list(adapt_delta = 0.95)
+)
+
+summary(fit_3cat)
+
+# ------------------------------------------------------------------
+# 5. Interaction terms: estimates, CIs, posterior probabilities
+# ------------------------------------------------------------------
+
+summary(fit_3cat)$fixed["RandomisationiCST:QCPR_3cat_round55to62", ]
+summary(fit_3cat)$fixed["RandomisationiCST:QCPR_3cat_roundAbove62", ]
+
+hypothesis(fit_3cat, "RandomisationiCST:QCPR_3cat_round55to62 > 0")
+hypothesis(fit_3cat, "RandomisationiCST:QCPR_3cat_roundAbove62 > 0")
+
+# ------------------------------------------------------------------
+# 6. Diagnostics
+# ------------------------------------------------------------------
+
+plot(fit_3cat)
+brms::pp_check(fit_3cat, ndraws = 100)
+cat("Max Rhat:", round(max(brms::rhat(fit_3cat)), 4), "\n")
+
+divergences_3cat <- sum(subset(brms::nuts_params(fit_3cat),
+                               Parameter == "divergent__")$Value)
+cat("Divergent transitions:", divergences_3cat, "\n")
+
+# ------------------------------------------------------------------
+# 7. Interaction plot (conditional effects)
+# ------------------------------------------------------------------
+
+conditional_effects(fit_3cat, effects = "QCPR_3cat_round:Randomisation")
+
+# ------------------------------------------------------------------
+# 8. Slope-style interaction plot
+# ------------------------------------------------------------------
+
+library(ggplot2)
+
+new_data_3cat <- expand.grid(
+  Randomisation = levels(df_complete$Randomisation),
+  QCPR_3cat_round = levels(df_complete$QCPR_3cat_round),
+  c_BASELINE_ADAScog = 0
+)
+
+preds_3cat <- fitted(fit_3cat, newdata = new_data_3cat, summary = TRUE,
+                     re_formula = NA)
+
+plot_data_3cat <- cbind(new_data_3cat, preds_3cat)
+
+interaction_slope_3cat <- ggplot(plot_data_3cat,
+                                 aes(x = QCPR_3cat_round, y = Estimate, color = Randomisation,
+                                     group = Randomisation)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = Q2.5, ymax = Q97.5), width = 0.1) +
+  labs(
+    title = "Interaction: Treatment x QCPR Category (3-group split)",
+    subtitle = "Predicted ADAS-Cog at 26 weeks (with 95% credible intervals)",
+    x = "Baseline QCPR Category",
+    y = "Predicted ADAS-Cog at 26 weeks",
+    color = "Randomisation"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+interaction_slope_3cat
+
+ggsave("interaction_slope_plot_3cat.png", interaction_slope_3cat,
+       width = 8, height = 6, dpi = 300)
