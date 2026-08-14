@@ -1,0 +1,3 @@
+"Model","Prior","Estimate","CrI_95","P_beta_positive"
+"Informative","Normal(-1.92, 2)",0.62,"[-0.75, 2.03]","80.7%"
+"Skeptical","Normal(0, 2)",0.63,"[-0.71, 2.01]","81.7%"

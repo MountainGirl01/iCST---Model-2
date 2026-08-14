@@ -1,0 +1,13 @@
+"Model","Parameter","Estimate","Est.Error","l-95% CI","u-95% CI","Rhat","Bulk_ESS","Tail_ESS","P_direction"
+"Informative","Baseline",0.984,0.048,0.891,1.078,1.001,6888,5189,NA
+"Informative","Intercept",21.015,0.504,20.029,21.987,1,7484,5459,NA
+"Informative","QPRC (z-score)",-0.059,0.496,-1.043,0.911,1.001,4724,5323,NA
+"Informative","Sigma",5.903,0.275,5.402,6.474,1.001,7097,5881,NA
+"Informative","Treatment",-0.927,0.705,-2.31,0.46,1,7425,5354,0.909
+"Informative","Treatment x QPRC",0.624,0.712,-0.749,2.033,1,4887,5596,0.807
+"Skeptical","Baseline",0.983,0.048,0.889,1.077,1,8054,6454,NA
+"Skeptical","Intercept",20.904,0.508,19.918,21.89,1.001,8526,6485,NA
+"Skeptical","QPRC (z-score)",-0.082,0.487,-1.054,0.865,1,5418,6359,NA
+"Skeptical","Sigma",5.894,0.276,5.39,6.477,1.001,8261,6048,NA
+"Skeptical","Treatment",-0.699,0.693,-2.066,0.675,1.001,8414,6031,0.84
+"Skeptical","Treatment x QPRC",0.633,0.7,-0.712,2.011,1,5534,5999,0.817

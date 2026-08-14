@@ -561,3 +561,437 @@ interaction_slope_3cat
 
 ggsave("interaction_slope_plot_3cat.png", interaction_slope_3cat,
        width = 8, height = 6, dpi = 300)
+
+# ------------------------------------------------------------------
+# UPDATED MODEL 2 - 2 PRIORS
+# ------------------------------------------------------------------
+
+# ------------------------------------------------------------------
+# UPDATE ZSCORE
+# ------------------------------------------------------------------
+library(dplyr)
+
+df_complete <- df_complete %>%
+  mutate(z_BASELINE_CQCPR_20 = as.numeric(scale(BASELINE_CQCPR_20)))
+
+mean(df_complete$z_BASELINE_CQCPR_20, na.rm = TRUE)
+sd(df_complete$z_BASELINE_CQCPR_20, na.rm = TRUE)
+
+df_complete[df_complete$BASELINE_CQCPR_20 == 69, c("BASELINE_CQCPR_20", "z_BASELINE_CQCPR_20")]
+
+## ------------------------------------------------------------------
+## Model 2: Prior Specification
+## ADAS_20_FU2 ~ c_BASELINE_ADAScog + Randomisation * z_BASELINE_CQCPR_20
+## Matches Model 1's finalized structure:
+##   - Outcome truncated to the plausible ADAS-Cog scale range
+##   - Sigma: half-normal, calibrated to the observed residual SD
+##   - Two-prior structure: Informative vs Skeptical (treatment effect)
+## ------------------------------------------------------------------
+
+library(brms)
+
+# ------------------------------------------------------------------
+# 1. Confirm the observed SD of the outcome, to calibrate sigma
+# ------------------------------------------------------------------
+
+sd(df_complete$ADAS_20_FU2, na.rm = TRUE)
+range(df_complete$ADAS_20_FU2, na.rm = TRUE)
+
+# ------------------------------------------------------------------
+# 2. Confirm Randomisation factor levels (TAU Control = reference)
+# ------------------------------------------------------------------
+
+df_complete$Randomisation <- factor(df_complete$Randomisation,
+                                    levels = c("TAU Control", "iCST"))
+levels(df_complete$Randomisation)
+
+# ------------------------------------------------------------------
+# 3. Model formula with truncated outcome
+# ------------------------------------------------------------------
+# Bounds match Model 1: 0 (true floor) to 60 (safely above observed max)
+
+adas_formula_m2_trunc <- bf(
+  ADAS_20_FU2 | trunc(lb = 0, ub = 60) ~
+    c_BASELINE_ADAScog + Randomisation * z_BASELINE_CQCPR_20
+)
+
+get_prior(adas_formula_m2_trunc, data = df_complete)
+# Confirm exact coefficient names before finalising priors - expect:
+# c_BASELINE_ADAScog, RandomisationiCST, z_BASELINE_CQCPR_20,
+# RandomisationiCST:z_BASELINE_CQCPR_20
+
+# ------------------------------------------------------------------
+# 4. INFORMATIVE PRIORS
+# ------------------------------------------------------------------
+# Intercept, baseline, and sigma match Model 1's finalized values
+# (same outcome variable, same population). Treatment effect prior
+# is literature-derived, matching Model 1's informative specification.
+# QPRC main effect and interaction remain weakly informative
+# (centred at 0) in both prior specifications, since there is no
+# strong prior literature estimating these effects.
+
+priors_informative_m2 <- c(
+  prior(normal(20, 4),    class = Intercept),
+  prior(normal(0.5, 0.3), class = b, coef = c_BASELINE_ADAScog),
+  prior(normal(-1.92, 2), class = b, coef = RandomisationiCST),
+  prior(normal(0, 2),     class = b, coef = z_BASELINE_CQCPR_20),
+  prior(normal(0, 2),     class = b,
+        coef = "RandomisationiCST:z_BASELINE_CQCPR_20"),
+  prior(normal(9, 3),     class = sigma, lb = 0)
+)
+
+# ------------------------------------------------------------------
+# 5. SKEPTICAL PRIORS
+# ------------------------------------------------------------------
+# Identical structure, except the treatment effect is centred at 0
+# (no assumed effect), matching Model 1's skeptical specification.
+
+priors_skeptical_m2 <- c(
+  prior(normal(20, 4),    class = Intercept),
+  prior(normal(0.5, 0.3), class = b, coef = c_BASELINE_ADAScog),
+  prior(normal(0, 2),     class = b, coef = RandomisationiCST),
+  prior(normal(0, 2),     class = b, coef = z_BASELINE_CQCPR_20),
+  prior(normal(0, 2),     class = b,
+        coef = "RandomisationiCST:z_BASELINE_CQCPR_20"),
+  prior(normal(9, 3),     class = sigma, lb = 0)
+)
+
+# ------------------------------------------------------------------
+# 6. Validate both prior sets against the model/data
+# ------------------------------------------------------------------
+
+validate_prior(priors_informative_m2, adas_formula_m2_trunc, data = df_complete)
+validate_prior(priors_skeptical_m2, adas_formula_m2_trunc, data = df_complete)
+
+## ------------------------------------------------------------------
+## Model 2: Fit Informative and Skeptical Models
+## Matches Model 1's settings: chains=4, iter=4000, warmup=2000,
+## adapt_delta=0.95
+## ------------------------------------------------------------------
+
+library(brms)
+
+# ------------------------------------------------------------------
+# 1. FIT: INFORMATIVE MODEL
+# ------------------------------------------------------------------
+
+fit_informative_m2 <- brm(
+  formula = adas_formula_m2_trunc,
+  data    = df_complete,
+  family  = gaussian(),
+  prior   = priors_informative_m2,
+  chains  = 4,
+  iter    = 4000,
+  warmup  = 2000,
+  cores   = 4,
+  seed    = 42,
+  control = list(adapt_delta = 0.95),
+  file    = "icst_model2_informative_final"
+)
+
+# ------------------------------------------------------------------
+# 2. FIT: SKEPTICAL MODEL
+# ------------------------------------------------------------------
+
+fit_skeptical_m2 <- brm(
+  formula = adas_formula_m2_trunc,
+  data    = df_complete,
+  family  = gaussian(),
+  prior   = priors_skeptical_m2,
+  chains  = 4,
+  iter    = 4000,
+  warmup  = 2000,
+  cores   = 4,
+  seed    = 42,
+  control = list(adapt_delta = 0.95),
+  file    = "icst_model2_skeptical_final"
+)
+
+# ------------------------------------------------------------------
+# 3. SUMMARY - both models
+# ------------------------------------------------------------------
+
+summary(fit_informative_m2)
+summary(fit_skeptical_m2)
+
+# ------------------------------------------------------------------
+# 4. QUICK CONVERGENCE CHECK
+# ------------------------------------------------------------------
+
+cat("Max Rhat (Informative):", round(max(brms::rhat(fit_informative_m2)), 4), "\n")
+cat("Max Rhat (Skeptical):", round(max(brms::rhat(fit_skeptical_m2)), 4), "\n")
+
+div_inf_m2 <- sum(subset(brms::nuts_params(fit_informative_m2),
+                         Parameter == "divergent__")$Value)
+div_skep_m2 <- sum(subset(brms::nuts_params(fit_skeptical_m2),
+                          Parameter == "divergent__")$Value)
+
+cat("Divergent transitions (Informative):", div_inf_m2, "\n")
+cat("Divergent transitions (Skeptical):", div_skep_m2, "\n")
+
+library(brms)
+
+# ------------------------------------------------------------------
+# TREATMENT EFFECT: posterior probabilities, both priors
+# ------------------------------------------------------------------
+
+hypothesis(fit_informative_m2, "RandomisationiCST < 0")
+hypothesis(fit_skeptical_m2, "RandomisationiCST < 0")
+
+# ------------------------------------------------------------------
+# INTERACTION TERM: posterior probabilities, both priors
+# ------------------------------------------------------------------
+
+hypothesis(fit_informative_m2, "RandomisationiCST:z_BASELINE_CQCPR_20 > 0")
+hypothesis(fit_skeptical_m2, "RandomisationiCST:z_BASELINE_CQCPR_20 > 0")
+
+# ------------------------------------------------------------------
+# QUICK SUMMARY TABLE - both effects, both priors
+# ------------------------------------------------------------------
+
+draws_treat_inf <- as_draws_df(fit_informative_m2)$b_RandomisationiCST
+draws_treat_skep <- as_draws_df(fit_skeptical_m2)$b_RandomisationiCST
+draws_int_inf <- as_draws_df(fit_informative_m2)$`b_RandomisationiCST:z_BASELINE_CQCPR_20`
+draws_int_skep <- as_draws_df(fit_skeptical_m2)$`b_RandomisationiCST:z_BASELINE_CQCPR_20`
+
+prob_summary_m2 <- data.frame(
+  Model = c("Informative", "Skeptical"),
+  P_treatment_benefit = c(mean(draws_treat_inf < 0), mean(draws_treat_skep < 0)),
+  P_interaction_positive = c(mean(draws_int_inf > 0), mean(draws_int_skep > 0))
+)
+
+prob_summary_m2$P_treatment_benefit <- round(prob_summary_m2$P_treatment_benefit, 3)
+prob_summary_m2$P_interaction_positive <- round(prob_summary_m2$P_interaction_positive, 3)
+
+print(prob_summary_m2)
+
+library(brms)
+library(ggplot2)
+library(patchwork)
+
+# ------------------------------------------------------------------
+# 1. Fit prior-only models (sample_prior = "only")
+# ------------------------------------------------------------------
+
+prior_check_informative_m2 <- brm(
+  formula = adas_formula_m2_trunc,
+  data    = df_complete,
+  family  = gaussian(),
+  prior   = priors_informative_m2,
+  sample_prior = "only",
+  chains  = 4,
+  iter    = 1000,
+  seed    = 42
+)
+
+prior_check_skeptical_m2 <- brm(
+  formula = adas_formula_m2_trunc,
+  data    = df_complete,
+  family  = gaussian(),
+  prior   = priors_skeptical_m2,
+  sample_prior = "only",
+  chains  = 4,
+  iter    = 1000,
+  seed    = 42
+)
+
+# ------------------------------------------------------------------
+# 2. INFORMATIVE - side by side
+# ------------------------------------------------------------------
+
+p_prior_inf_m2 <- brms::pp_check(prior_check_informative_m2, ndraws = 100) +
+  labs(title = "Prior Predictive Check",
+       x = "ADAS-Cog score", y = "Density") +
+  theme_minimal()
+
+p_post_inf_m2 <- brms::pp_check(fit_informative_m2, ndraws = 100) +
+  labs(title = "Posterior Predictive Check",
+       x = "ADAS-Cog score", y = "Density") +
+  theme_minimal()
+
+combined_informative_m2 <- p_prior_inf_m2 | p_post_inf_m2
+
+combined_informative_m2
+
+ggsave("model2_ppc_informative.png", combined_informative_m2,
+       width = 10, height = 5, dpi = 300)
+
+# ------------------------------------------------------------------
+# 3. SKEPTICAL - side by side
+# ------------------------------------------------------------------
+
+p_prior_skep_m2 <- brms::pp_check(prior_check_skeptical_m2, ndraws = 100) +
+  labs(title = "Prior Predictive Check",
+       x = "ADAS-Cog score", y = "Density") +
+  theme_minimal()
+
+p_post_skep_m2 <- brms::pp_check(fit_skeptical_m2, ndraws = 100) +
+  labs(title = "Posterior Predictive Check",
+       x = "ADAS-Cog score", y = "Density") +
+  theme_minimal()
+
+combined_skeptical_m2 <- p_prior_skep_m2 | p_post_skep_m2
+
+combined_skeptical_m2
+
+ggsave("model2_ppc_skeptical.png", combined_skeptical_m2,
+       width = 10, height = 5, dpi = 300)
+
+
+> # ------------------------------------------------------------------
+> # Interaction Plot
+> # ------------------------------------------------------------------
+
+conditional_effects(fit_informative_m2, effects = "z_BASELINE_CQCPR_20:Randomisation")
+
+
+> # ------------------------------------------------------------------
+> # Table of Results
+> # ------------------------------------------------------------------
+
+## ------------------------------------------------------------------
+## Model 2: Comprehensive Results Table
+## All parameters (Intercept, Baseline, Treatment, QPRC, Interaction,
+## Sigma), full diagnostics (Est.Error, CrI, Rhat, ESS), and posterior
+## probabilities where relevant - both Informative and Skeptical priors.
+## ------------------------------------------------------------------
+
+library(dplyr)
+library(brms)
+library(gt)
+
+# ------------------------------------------------------------------
+# 1. Function to pull all parameters + diagnostics from a fitted model
+# ------------------------------------------------------------------
+
+extract_all_params_m2 <- function(fit, model_label) {
+  fixed_df <- as.data.frame(summary(fit)$fixed)
+  fixed_df$Parameter <- rownames(fixed_df)
+  
+  sigma_df <- as.data.frame(summary(fit)$spec_pars)
+  sigma_df$Parameter <- rownames(sigma_df)
+  
+  combined <- bind_rows(fixed_df, sigma_df)
+  combined$Model <- model_label
+  
+  combined %>%
+    select(Model, Parameter, Estimate, Est.Error, `l-95% CI`, `u-95% CI`,
+           Rhat, Bulk_ESS, Tail_ESS)
+}
+
+# ------------------------------------------------------------------
+# 2. Extract from both models
+# ------------------------------------------------------------------
+
+params_inf_m2 <- extract_all_params_m2(fit_informative_m2, "Informative")
+params_skep_m2 <- extract_all_params_m2(fit_skeptical_m2, "Skeptical")
+
+full_table_m2 <- bind_rows(params_inf_m2, params_skep_m2)
+
+# ------------------------------------------------------------------
+# 3. Clean parameter labels and set display order
+# ------------------------------------------------------------------
+
+full_table_m2$Parameter <- dplyr::recode(full_table_m2$Parameter,
+                                         "Intercept" = "Intercept",
+                                         "c_BASELINE_ADAScog" = "Baseline",
+                                         "RandomisationiCST" = "Treatment",
+                                         "z_BASELINE_CQCPR_20" = "QPRC (z-score)",
+                                         "RandomisationiCST:z_BASELINE_CQCPR_20" = "Treatment x QPRC",
+                                         "sigma" = "Sigma"
+)
+
+param_order <- c("Intercept", "Baseline", "QPRC (z-score)", "Sigma",
+                 "Treatment", "Treatment x QPRC")
+full_table_m2$Parameter <- factor(full_table_m2$Parameter, levels = param_order)
+full_table_m2$Model <- factor(full_table_m2$Model, levels = c("Informative", "Skeptical"))
+
+# ------------------------------------------------------------------
+# 4. Add posterior probability column (treatment & interaction only)
+# ------------------------------------------------------------------
+
+draws_treat_inf <- as_draws_df(fit_informative_m2)$b_RandomisationiCST
+draws_treat_skep <- as_draws_df(fit_skeptical_m2)$b_RandomisationiCST
+draws_int_inf <- as_draws_df(fit_informative_m2)$`b_RandomisationiCST:z_BASELINE_CQCPR_20`
+draws_int_skep <- as_draws_df(fit_skeptical_m2)$`b_RandomisationiCST:z_BASELINE_CQCPR_20`
+
+prob_lookup <- tibble::tibble(
+  Model = c("Informative", "Informative", "Skeptical", "Skeptical"),
+  Parameter = c("Treatment", "Treatment x QPRC", "Treatment", "Treatment x QPRC"),
+  P_direction = c(
+    mean(draws_treat_inf < 0),    # P(benefit)
+    mean(draws_int_inf > 0),      # P(positive)
+    mean(draws_treat_skep < 0),
+    mean(draws_int_skep > 0)
+  )
+)
+
+full_table_m2 <- full_table_m2 %>%
+  left_join(prob_lookup, by = c("Model", "Parameter")) %>%
+  arrange(Model, Parameter) %>%
+  mutate(across(c(Estimate, Est.Error, `l-95% CI`, `u-95% CI`, Rhat, P_direction), ~round(.x, 3)),
+         across(c(Bulk_ESS, Tail_ESS), ~round(.x, 0)))
+
+print(full_table_m2)
+
+# ------------------------------------------------------------------
+# 5. Save raw CSV backup
+# ------------------------------------------------------------------
+
+write.csv(full_table_m2, "model2_comprehensive_results_table.csv", row.names = FALSE)
+
+# ------------------------------------------------------------------
+# 6. Render as a formatted gt table
+# ------------------------------------------------------------------
+
+full_gt_m2 <- full_table_m2 %>%
+  rename(`Est. Error` = Est.Error,
+         `Lower CrI` = `l-95% CI`,
+         `Upper CrI` = `u-95% CI`,
+         `Bulk ESS` = Bulk_ESS,
+         `Tail ESS` = Tail_ESS,
+         `R-hat` = Rhat,
+         `Posterior Probability` = P_direction) %>%
+  group_by(Model) %>%
+  gt() %>%
+  tab_header(
+    title = "Model 2: Comprehensive Posterior Results",
+    subtitle = "ADAS-Cog at 26 weeks ~ Baseline ADAS-Cog + Randomisation x QPRC"
+  ) %>%
+  fmt_number(columns = c(Estimate, `Est. Error`, `Lower CrI`, `Upper CrI`,
+                         `R-hat`, `Posterior Probability`), decimals = 3) %>%
+  fmt_number(columns = c(`Bulk ESS`, `Tail ESS`), decimals = 0) %>%
+  sub_missing(columns = `Posterior Probability`, missing_text = "\u2014") %>%
+  cols_align(align = "center", columns = everything()) %>%
+  cols_align(align = "left", columns = Parameter) %>%
+  tab_source_note(
+    source_note = paste0("N = 258 complete cases. Posterior Probability = P(Treatment < 0) ",
+                         "for Treatment, P(Treatment x QPRC > 0) for the interaction term. ",
+                         "Not applicable (\u2014) for Intercept, Baseline, QPRC main effect, and Sigma.")
+  )
+
+full_gt_m2
+
+gtsave(full_gt_m2, "model2_comprehensive_results_table.png")
+
+# ------------------------------------------------------------------
+# Formatted Interaction Slope
+# ------------------------------------------------------------------
+
+library(ggplot2)
+
+interaction_plot_m2 <- plot(conditional_effects(fit_informative_m2,
+                                                effects = "z_BASELINE_CQCPR_20:Randomisation"),
+                            points = FALSE)[[1]] +
+  labs(
+    title = "Interaction: Treatment x Relationship Quality (QPRC)",
+    subtitle = "Predicted ADAS-Cog at 26 weeks by treatment group across QPRC (z-score)",
+    x = "QPRC (z-score)",
+    y = "Predicted ADAS-Cog at 26 weeks"
+  ) +
+  theme_minimal()
+
+interaction_plot_m2
+
+ggsave("model2_interaction_plot_final.png", interaction_plot_m2,
+       width = 9, height = 6, dpi = 300)

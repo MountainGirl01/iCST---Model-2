@@ -1,0 +1,3 @@
+"Model","Estimate","CI_lower","CI_upper","P_positive","P_negative"
+"Informative",0.624,-0.749,2.033,0.807,0.193
+"Skeptical",0.633,-0.712,2.011,0.817,0.183
