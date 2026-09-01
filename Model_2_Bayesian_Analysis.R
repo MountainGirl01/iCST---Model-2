@@ -995,3 +995,279 @@ interaction_plot_m2
 
 ggsave("model2_interaction_plot_final.png", interaction_plot_m2,
        width = 9, height = 6, dpi = 300)
+
+# ------------------------------------------------------------------
+# Categorical Model 01.09.26
+# ------------------------------------------------------------------
+
+## ============================================================================
+## Model 2 (Categorical Sensitivity Analysis): QCPR Median Split
+## ADAS_20_FU2 ~ c_BASELINE_ADAScog + Randomisation * QCPR_median_group
+## Complementary sensitivity analysis to the primary continuous QCPR model.
+## ============================================================================
+
+# ---- LIBRARIES ---------------------------------------------------------
+library(brms)
+library(dplyr)
+library(ggplot2)
+library(gt)
+library(tidybayes)
+
+# ============================================================================
+# PART 1: DATA PREPARATION
+# ============================================================================
+
+# ---- Step 1: Calculate the median of BASELINE_CQCPR_20 ---------------------
+
+qcpr_median <- median(df_complete$BASELINE_CQCPR_20, na.rm = TRUE)
+qcpr_median
+
+# ---- Step 2: Create the categorical (median-split) variable ----------------
+# "Below median" is set as the reference level.
+
+df_complete <- df_complete %>%
+  mutate(
+    QCPR_median_group = ifelse(BASELINE_CQCPR_20 <= qcpr_median,
+                               "Below median", "Above median"),
+    QCPR_median_group = factor(QCPR_median_group,
+                               levels = c("Below median", "Above median"))
+  )
+
+table(df_complete$QCPR_median_group)
+
+# ---- Step 3: Confirm Randomisation reference level (TAU Control) -----------
+
+df_complete$Randomisation <- factor(df_complete$Randomisation,
+                                    levels = c("TAU Control", "iCST"))
+levels(df_complete$Randomisation)
+
+# ============================================================================
+# PART 2: MODEL SPECIFICATION AND FITTING
+# ============================================================================
+
+# ---- Formula (truncated outcome, matching primary model) -------------------
+
+adas_formula_m2_median <- bf(
+  ADAS_20_FU2 | trunc(lb = 0, ub = 60) ~
+    c_BASELINE_ADAScog + Randomisation * QCPR_median_group
+)
+
+get_prior(adas_formula_m2_median, data = df_complete)
+
+# ---- Priors (matching primary model structure) ------------------------------
+
+priors_informative_median <- c(
+  prior(normal(20, 4),    class = Intercept),
+  prior(normal(0.5, 0.3), class = b, coef = c_BASELINE_ADAScog),
+  prior(normal(-1.92, 2), class = b, coef = RandomisationiCST),
+  prior(normal(0, 5),     class = b, coef = "QCPR_median_groupAbovemedian"),
+  prior(normal(0, 5),     class = b,
+        coef = "RandomisationiCST:QCPR_median_groupAbovemedian"),
+  prior(normal(9, 3),     class = sigma, lb = 0)
+)
+
+priors_skeptical_median <- c(
+  prior(normal(20, 4),    class = Intercept),
+  prior(normal(0.5, 0.3), class = b, coef = c_BASELINE_ADAScog),
+  prior(normal(0, 2),     class = b, coef = RandomisationiCST),
+  prior(normal(0, 5),     class = b, coef = "QCPR_median_groupAbovemedian"),
+  prior(normal(0, 5),     class = b,
+        coef = "RandomisationiCST:QCPR_median_groupAbovemedian"),
+  prior(normal(9, 3),     class = sigma, lb = 0)
+)
+
+validate_prior(priors_informative_median, adas_formula_m2_median, data = df_complete)
+validate_prior(priors_skeptical_median, adas_formula_m2_median, data = df_complete)
+
+# ---- Fit both models ---------------------------------------------------------
+
+fit_informative_median <- brm(
+  formula = adas_formula_m2_median,
+  data    = df_complete,
+  family  = gaussian(),
+  prior   = priors_informative_median,
+  chains  = 4,
+  iter    = 4000,
+  warmup  = 2000,
+  cores   = 4,
+  seed    = 42,
+  control = list(adapt_delta = 0.95),
+  file    = "icst_model2_median_informative"
+)
+
+fit_skeptical_median <- brm(
+  formula = adas_formula_m2_median,
+  data    = df_complete,
+  family  = gaussian(),
+  prior   = priors_skeptical_median,
+  chains  = 4,
+  iter    = 4000,
+  warmup  = 2000,
+  cores   = 4,
+  seed    = 42,
+  control = list(adapt_delta = 0.95),
+  file    = "icst_model2_median_skeptical"
+)
+
+summary(fit_informative_median)
+summary(fit_skeptical_median)
+
+# ---- Convergence check --------------------------------------------------------
+
+cat("Max Rhat (Informative):", round(max(brms::rhat(fit_informative_median)), 4), "\n")
+cat("Max Rhat (Skeptical):", round(max(brms::rhat(fit_skeptical_median)), 4), "\n")
+
+# ============================================================================
+# PART 3: RESULTS TABLE
+# ============================================================================
+
+extract_all_params_median <- function(fit, model_label) {
+  fixed_df <- as.data.frame(summary(fit)$fixed)
+  fixed_df$Parameter <- rownames(fixed_df)
+  
+  sigma_df <- as.data.frame(summary(fit)$spec_pars)
+  sigma_df$Parameter <- rownames(sigma_df)
+  
+  combined <- bind_rows(fixed_df, sigma_df)
+  combined$Model <- model_label
+  
+  combined %>%
+    select(Model, Parameter, Estimate, Est.Error, `l-95% CI`, `u-95% CI`,
+           Rhat, Bulk_ESS, Tail_ESS)
+}
+
+params_inf_median <- extract_all_params_median(fit_informative_median, "Informative")
+params_skep_median <- extract_all_params_median(fit_skeptical_median, "Skeptical")
+
+full_table_median <- bind_rows(params_inf_median, params_skep_median)
+
+full_table_median$Parameter <- dplyr::recode(full_table_median$Parameter,
+                                             "Intercept" = "Intercept",
+                                             "c_BASELINE_ADAScog" = "Baseline",
+                                             "RandomisationiCST" = "Treatment",
+                                             "QCPR_median_groupAbovemedian" = "QCPR Group (Above median)",
+                                             "RandomisationiCST:QCPR_median_groupAbovemedian" = "Treatment x QCPR Group",
+                                             "sigma" = "Sigma"
+)
+
+param_order <- c("Intercept", "Baseline", "QCPR Group (Above median)", "Sigma",
+                 "Treatment", "Treatment x QCPR Group")
+full_table_median$Parameter <- factor(full_table_median$Parameter, levels = param_order)
+full_table_median$Model <- factor(full_table_median$Model, levels = c("Informative", "Skeptical"))
+
+draws_treat_inf_med <- as_draws_df(fit_informative_median)$b_RandomisationiCST
+draws_treat_skep_med <- as_draws_df(fit_skeptical_median)$b_RandomisationiCST
+draws_int_inf_med <- as_draws_df(fit_informative_median)$`b_RandomisationiCST:QCPR_median_groupAbovemedian`
+draws_int_skep_med <- as_draws_df(fit_skeptical_median)$`b_RandomisationiCST:QCPR_median_groupAbovemedian`
+
+prob_lookup_median <- tibble::tibble(
+  Model = c("Informative", "Informative", "Skeptical", "Skeptical"),
+  Parameter = c("Treatment", "Treatment x QCPR Group", "Treatment", "Treatment x QCPR Group"),
+  P_direction = c(
+    mean(draws_treat_inf_med < 0),
+    mean(draws_int_inf_med > 0),
+    mean(draws_treat_skep_med < 0),
+    mean(draws_int_skep_med > 0)
+  )
+)
+
+full_table_median <- full_table_median %>%
+  left_join(prob_lookup_median, by = c("Model", "Parameter")) %>%
+  arrange(Model, match(Parameter, param_order)) %>%
+  mutate(across(c(Estimate, Est.Error, `l-95% CI`, `u-95% CI`, Rhat, P_direction), ~round(.x, 3)),
+         across(c(Bulk_ESS, Tail_ESS), ~round(.x, 0)))
+
+print(full_table_median)
+
+write.csv(full_table_median, "model2_median_split_results_table.csv", row.names = FALSE)
+
+full_gt_median <- full_table_median %>%
+  rename(`Est. Error` = Est.Error,
+         `Lower CrI` = `l-95% CI`,
+         `Upper CrI` = `u-95% CI`,
+         `Bulk ESS` = Bulk_ESS,
+         `Tail ESS` = Tail_ESS,
+         `R-hat` = Rhat,
+         `Posterior Probability` = P_direction) %>%
+  group_by(Model) %>%
+  gt() %>%
+  tab_header(
+    title = "Model 2 (Median-Split Sensitivity Analysis): Posterior Results",
+    subtitle = "ADAS-Cog at 26 weeks ~ Baseline ADAS-Cog + Randomisation x QCPR Group"
+  ) %>%
+  fmt_number(columns = c(Estimate, `Est. Error`, `Lower CrI`, `Upper CrI`,
+                         `R-hat`, `Posterior Probability`), decimals = 3) %>%
+  fmt_number(columns = c(`Bulk ESS`, `Tail ESS`), decimals = 0) %>%
+  sub_missing(columns = `Posterior Probability`, missing_text = "\u2014") %>%
+  cols_align(align = "center", columns = everything()) %>%
+  cols_align(align = "left", columns = Parameter) %>%
+  tab_source_note(
+    source_note = paste0("N = 258 complete cases. QCPR median = ",
+                         round(qcpr_median, 0),
+                         ". Reference categories: TAU Control, Below median.")
+  )
+
+full_gt_median
+
+gtsave(full_gt_median, "model2_median_split_results_table.png")
+
+# ============================================================================
+# PART 4: INTERACTION BAR CHART
+# ============================================================================
+
+new_data_median <- expand.grid(
+  Randomisation = levels(df_complete$Randomisation),
+  QCPR_median_group = levels(df_complete$QCPR_median_group),
+  c_BASELINE_ADAScog = 0
+)
+
+preds_median <- fitted(fit_informative_median, newdata = new_data_median,
+                       summary = TRUE, re_formula = NA)
+
+plot_data_median <- cbind(new_data_median, preds_median)
+
+print(plot_data_median)
+
+interaction_bar_median <- ggplot(plot_data_median,
+                                 aes(x = QCPR_median_group, y = Estimate, fill = Randomisation)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6, alpha = 0.85) +
+  geom_errorbar(aes(ymin = Q2.5, ymax = Q97.5),
+                position = position_dodge(width = 0.7), width = 0.15, linewidth = 0.6) +
+  scale_fill_manual(values = c("TAU Control" = "#F08080", "iCST" = "#4ECDC4")) +
+  labs(
+    title = "Interaction: Treatment x Relationship Quality (Median Split)",
+    subtitle = "Predicted ADAS-Cog at 26 weeks (with 95% credible intervals)",
+    x = "QCPR Group",
+    y = "Predicted ADAS-Cog at 26 weeks",
+    fill = "Randomisation"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  coord_cartesian(ylim = c(0, max(plot_data_median$Q97.5) * 1.1))
+
+interaction_bar_median
+
+ggsave("model2_interaction_barchart_median.png", interaction_bar_median,
+       width = 8, height = 6, dpi = 300)
+
+# ============================================================================
+# PART 5: DISTRIBUTION HISTOGRAM (WITH MEDIAN CUTOFF MARKED)
+# ============================================================================
+
+qcpr_histogram_median <- ggplot(df_complete, aes(x = BASELINE_CQCPR_20)) +
+  geom_histogram(binwidth = 2, fill = "steelblue", color = "white", alpha = 0.85) +
+  stat_bin(binwidth = 2, geom = "text", aes(label = after_stat(count)),
+           vjust = -0.5, size = 3) +
+  geom_vline(xintercept = qcpr_median, linetype = "dashed", color = "red", linewidth = 0.8) +
+  labs(
+    title = "Distribution of Baseline QCPR Scores (Carer-Reported)",
+    subtitle = paste0("Dashed line marks the sample median (", qcpr_median, ")"),
+    x = "QCPR Score (0-70)",
+    y = "Number of participants"
+  ) +
+  theme_minimal()
+
+qcpr_histogram_median
+
+ggsave("qcpr_histogram_median_split.png", qcpr_histogram_median,
+       width = 9, height = 6, dpi = 300)

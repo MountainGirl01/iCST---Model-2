@@ -1,0 +1,13 @@
+"Model","Parameter","Estimate","Est.Error","l-95% CI","u-95% CI","Rhat","Bulk_ESS","Tail_ESS","P_direction"
+"Informative","Intercept",21.447,0.656,20.143,22.703,1.001,6229,5970,NA
+"Informative","Baseline",0.994,0.048,0.902,1.088,1,7192,5767,NA
+"Informative","QCPR Group (Above median)",-1.188,1.028,-3.182,0.873,1.001,5379,5491,NA
+"Informative","Sigma",5.867,0.279,5.348,6.458,1,7160,5227,NA
+"Informative","Treatment",-1.963,0.903,-3.722,-0.227,1.001,5024,5494,0.985
+"Informative","Treatment x QCPR Group",2.606,1.381,-0.058,5.321,1.001,4656,5551,0.972
+"Skeptical","Intercept",21.28,0.656,19.973,22.542,1,5557,5605,NA
+"Skeptical","Baseline",0.991,0.048,0.898,1.085,1,6527,5440,NA
+"Skeptical","QCPR Group (Above median)",-1.042,1.037,-3.025,1.013,1.001,4709,5650,NA
+"Skeptical","Sigma",5.871,0.279,5.362,6.448,1.001,5722,5708,NA
+"Skeptical","Treatment",-1.573,0.929,-3.373,0.255,1,4880,5526,0.953
+"Skeptical","Treatment x QCPR Group",2.249,1.415,-0.521,4.99,1,4062,4794,0.945

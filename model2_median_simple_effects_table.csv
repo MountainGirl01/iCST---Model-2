@@ -1,0 +1,5 @@
+"Model","QCPR_Group","Estimate","CI_lower","CI_upper","P_benefit"
+"Informative","Below median",-1.963,-3.722,-0.227,0.985
+"Informative","Above median",0.642,-1.469,2.729,0.274
+"Skeptical","Below median",-1.573,-3.373,0.255,0.953
+"Skeptical","Above median",0.676,-1.487,2.835,0.264
