@@ -1271,3 +1271,29 @@ qcpr_histogram_median
 
 ggsave("qcpr_histogram_median_split.png", qcpr_histogram_median,
        width = 9, height = 6, dpi = 300)
+
+## ------------------------------------------------------------------
+> ## Secondary Table: Change in Relationship Quality (QCPR) by Group
+  > ## Standalone table - separate from Table 1 (baseline characteristics).
+  > ## Reports descriptive change scores and the between-group Welch's
+  > ## t-test comparing amount of change between iCST and TAU Control.
+  > ## ------------------------------------------------------------------
+> 
+  > library(dplyr)
+> library(gt)
+> 
+  > # ------------------------------------------------------------------
+> # 1. Calculate change score
+  > # ------------------------------------------------------------------
+> 
+  > dat$qcpr_change <- dat$CQCPR_20_FU2 - dat$BASELINE_CQCPR_20
+> 
+  > tau_only <- dat[dat$Randomisation == "TAU Control", ]
+> icst_only <- dat[dat$Randomisation == "iCST", ]
+> 
+  > # ------------------------------------------------------------------
+> # 2. Run the Welch's t-test
+  > # ------------------------------------------------------------------
+> 
+  > qcpr_ttest <- t.test(qcpr_change ~ Randomisation, data = dat)
+> qcpr_ttest

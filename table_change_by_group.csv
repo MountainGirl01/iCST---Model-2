@@ -1,0 +1,5 @@
+"Measure","Group","N","Mean_Baseline","Mean_FollowUp","Mean_Change","SD_Change","t","df","p"
+"ADAS-Cog","TAU Control",130,19.14,20.25,1.12,5.79,NA,NA,NA
+"ADAS-Cog","iCST",128,20.36,20.69,0.33,5.65,NA,NA,NA
+"QCPR","TAU Control",128,58.67,59.82,1.2,6.68,1.72,247.4,0.086
+"QCPR","iCST",125,60.11,60.14,-0.15,5.78,NA,NA,NA
