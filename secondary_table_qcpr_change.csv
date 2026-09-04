@@ -1,3 +1,6 @@
-"Group","N","Mean Baseline","Mean 26-Week","Mean Change","SD Change"
-"TAU Control",128,58.67,59.82,1.2,6.68
-"iCST",125,60.11,60.14,-0.15,5.78
+"Statistic","TAU Control","iCST","t","p"
+"N",128,125,NA,NA
+"Mean Baseline",58.67,60.11,NA,NA
+"Mean 26-Week",59.82,60.14,NA,NA
+"Mean Change",1.2,-0.15,1.72,0.086
+"SD Change",6.68,5.78,NA,NA
