@@ -1740,3 +1740,476 @@ final_table1 %>%
   as_gt() %>%
   gt::gtsave("table1_baseline_characteristics_N254.png")
 
+## ============================================================================
+## Model 2 (Categorical, Median-Split, N=256): QCPR Group Moderation Analysis
+## ADAS_20_FU2 ~ c_BASELINE_ADAScog + Randomisation * QCPR_median_group
+## Uses raw BASELINE_CQCPR_20 scores (not z-scored) to define the median split.
+## Strict 3 SD outlier rule applied: only qPIN 14201 and 17018 excluded.
+## ============================================================================
+
+# ---- LIBRARIES ---------------------------------------------------------
+library(brms)
+library(dplyr)
+library(ggplot2)
+library(gt)
+library(tidybayes)
+library(patchwork)
+
+# ============================================================================
+# PART 1: DATA PREPARATION
+# ============================================================================
+
+df <- read.csv("~/Downloads/THESIS COMBINED Complete case 26 week follow up data.csv",
+               header = TRUE)
+
+# ---- Fix miscoded missing values ----------------------------------------
+
+df$BASELINE_CQCPR_20[df$BASELINE_CQCPR_20 == 0] <- NA
+
+# ---- Filter to complete cases --------------------------------------------
+
+df_complete <- df[complete.cases(df[, c("ADAS_20_FU2",
+                                        "c_BASELINE_ADAScog",
+                                        "Randomisation",
+                                        "BASELINE_CQCPR_20")]), ]
+
+nrow(df_complete)   # should be 258
+
+# ---- Exclude ONLY the 2 cases exceeding a strict 3 SD threshold -----------
+# qPIN 14201 (z=4.15) and 17018 (z=4.33)
+
+df_complete <- df_complete[!(df_complete$qPIN %in% c(14201, 17018)), ]
+
+nrow(df_complete)   # should now be 256
+
+# ---- Set factor levels -----------------------------------------------------
+
+df_complete$Randomisation <- factor(df_complete$Randomisation,
+                                    levels = c("TAU Control", "iCST"))
+table(df_complete$Randomisation)
+
+# ---- Calculate the median (on raw BASELINE_CQCPR_20) and create the
+# categorical group -----------------------------------------------------
+
+qcpr_median <- median(df_complete$BASELINE_CQCPR_20, na.rm = TRUE)
+qcpr_median
+
+df_complete <- df_complete %>%
+  mutate(
+    QCPR_median_group = ifelse(BASELINE_CQCPR_20 <= qcpr_median,
+                               "Below median", "Above median"),
+    QCPR_median_group = factor(QCPR_median_group,
+                               levels = c("Below median", "Above median"))
+  )
+
+table(df_complete$QCPR_median_group)
+
+# ============================================================================
+# PART 2: MODEL SPECIFICATION
+# ============================================================================
+
+adas_formula_m2_median <- bf(
+  ADAS_20_FU2 | trunc(lb = 0, ub = 60) ~
+    c_BASELINE_ADAScog + Randomisation * QCPR_median_group
+)
+
+get_prior(adas_formula_m2_median, data = df_complete)
+
+priors_informative_median <- c(
+  prior(normal(20, 4),    class = Intercept),
+  prior(normal(0.5, 0.3), class = b, coef = c_BASELINE_ADAScog),
+  prior(normal(-1.92, 2), class = b, coef = RandomisationiCST),
+  prior(normal(0, 5),     class = b, coef = "QCPR_median_groupAbovemedian"),
+  prior(normal(0, 5),     class = b,
+        coef = "RandomisationiCST:QCPR_median_groupAbovemedian"),
+  prior(normal(9, 3),     class = sigma, lb = 0)
+)
+
+priors_skeptical_median <- c(
+  prior(normal(20, 4),    class = Intercept),
+  prior(normal(0.5, 0.3), class = b, coef = c_BASELINE_ADAScog),
+  prior(normal(0, 2),     class = b, coef = RandomisationiCST),
+  prior(normal(0, 5),     class = b, coef = "QCPR_median_groupAbovemedian"),
+  prior(normal(0, 5),     class = b,
+        coef = "RandomisationiCST:QCPR_median_groupAbovemedian"),
+  prior(normal(9, 3),     class = sigma, lb = 0)
+)
+
+validate_prior(priors_informative_median, adas_formula_m2_median, data = df_complete)
+validate_prior(priors_skeptical_median, adas_formula_m2_median, data = df_complete)
+
+# ============================================================================
+# PART 3: FIT BOTH MODELS
+# ============================================================================
+
+fit_informative_median <- brm(
+  formula = adas_formula_m2_median,
+  data    = df_complete,
+  family  = gaussian(),
+  prior   = priors_informative_median,
+  chains  = 4,
+  iter    = 4000,
+  warmup  = 2000,
+  cores   = 4,
+  seed    = 42,
+  control = list(adapt_delta = 0.95),
+  file    = "icst_model2_median_informative_N256"
+)
+
+fit_skeptical_median <- brm(
+  formula = adas_formula_m2_median,
+  data    = df_complete,
+  family  = gaussian(),
+  prior   = priors_skeptical_median,
+  chains  = 4,
+  iter    = 4000,
+  warmup  = 2000,
+  cores   = 4,
+  seed    = 42,
+  control = list(adapt_delta = 0.95),
+  file    = "icst_model2_median_skeptical_N256"
+)
+
+summary(fit_informative_median)
+summary(fit_skeptical_median)
+
+# ============================================================================
+# PART 4: CONVERGENCE CHECK
+# ============================================================================
+
+cat("Max Rhat (Informative):", round(max(brms::rhat(fit_informative_median)), 4), "\n")
+cat("Max Rhat (Skeptical):", round(max(brms::rhat(fit_skeptical_median)), 4), "\n")
+
+# ============================================================================
+# PART 5: POSTERIOR PROBABILITIES
+# ============================================================================
+
+hypothesis(fit_informative_median, "RandomisationiCST < 0")
+hypothesis(fit_skeptical_median, "RandomisationiCST < 0")
+
+hypothesis(fit_informative_median, "RandomisationiCST:QCPR_median_groupAbovemedian > 0")
+hypothesis(fit_skeptical_median, "RandomisationiCST:QCPR_median_groupAbovemedian > 0")
+
+# ============================================================================
+# PART 6: PRIOR AND POSTERIOR PREDICTIVE CHECKS
+# ============================================================================
+
+prior_check_informative_median <- brm(
+  formula = adas_formula_m2_median,
+  data    = df_complete,
+  family  = gaussian(),
+  prior   = priors_informative_median,
+  sample_prior = "only",
+  chains  = 4,
+  iter    = 1000,
+  seed    = 42
+)
+
+prior_check_skeptical_median <- brm(
+  formula = adas_formula_m2_median,
+  data    = df_complete,
+  family  = gaussian(),
+  prior   = priors_skeptical_median,
+  sample_prior = "only",
+  chains  = 4,
+  iter    = 1000,
+  seed    = 42
+)
+
+p_prior_inf <- brms::pp_check(prior_check_informative_median, ndraws = 100) +
+  labs(title = "Prior Predictive Check", x = "ADAS-Cog score", y = "Density") +
+  theme_minimal()
+
+p_post_inf <- brms::pp_check(fit_informative_median, ndraws = 100) +
+  labs(title = "Posterior Predictive Check", x = "ADAS-Cog score", y = "Density") +
+  theme_minimal()
+
+combined_informative <- p_prior_inf | p_post_inf
+combined_informative
+ggsave("model2_median_ppc_informative_N256.png", combined_informative, width = 10, height = 5, dpi = 300)
+
+p_prior_skep <- brms::pp_check(prior_check_skeptical_median, ndraws = 100) +
+  labs(title = "Prior Predictive Check", x = "ADAS-Cog score", y = "Density") +
+  theme_minimal()
+
+p_post_skep <- brms::pp_check(fit_skeptical_median, ndraws = 100) +
+  labs(title = "Posterior Predictive Check", x = "ADAS-Cog score", y = "Density") +
+  theme_minimal()
+
+combined_skeptical <- p_prior_skep | p_post_skep
+combined_skeptical
+ggsave("model2_median_ppc_skeptical_N256.png", combined_skeptical, width = 10, height = 5, dpi = 300)
+
+# ============================================================================
+# PART 7: INTERACTION BAR CHART (iCST first, TAU Control second)
+# ============================================================================
+
+new_data_median <- expand.grid(
+  Randomisation = levels(df_complete$Randomisation),
+  QCPR_median_group = levels(df_complete$QCPR_median_group),
+  c_BASELINE_ADAScog = 0
+)
+
+preds_median <- fitted(fit_informative_median, newdata = new_data_median,
+                       summary = TRUE, re_formula = NA)
+
+plot_data_median <- cbind(new_data_median, preds_median)
+plot_data_median$Randomisation <- factor(plot_data_median$Randomisation,
+                                         levels = c("iCST", "TAU Control"))
+
+print(plot_data_median)
+
+interaction_bar_median <- ggplot(plot_data_median,
+                                 aes(x = QCPR_median_group, y = Estimate, fill = Randomisation)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6, alpha = 0.85) +
+  geom_errorbar(aes(ymin = Q2.5, ymax = Q97.5),
+                position = position_dodge(width = 0.7), width = 0.15, linewidth = 0.6) +
+  scale_fill_manual(values = c("iCST" = "#4ECDC4", "TAU Control" = "#F08080")) +
+  labs(
+    title = "Interaction: Treatment x Relationship Quality (Median Split)",
+    subtitle = "Predicted ADAS-Cog at 26 weeks (with 95% credible intervals), N=256",
+    x = "QCPR Group",
+    y = "Predicted ADAS-Cog at 26 weeks",
+    fill = "Randomisation"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  coord_cartesian(ylim = c(0, max(plot_data_median$Q97.5) * 1.1))
+
+interaction_bar_median
+ggsave("model2_interaction_barchart_median_N256.png", interaction_bar_median,
+       width = 8, height = 6, dpi = 300)
+
+# ============================================================================
+# PART 8: COMPREHENSIVE RESULTS TABLE
+# ============================================================================
+
+extract_all_params_median <- function(fit, model_label) {
+  fixed_df <- as.data.frame(summary(fit)$fixed)
+  fixed_df$Parameter <- rownames(fixed_df)
+  
+  sigma_df <- as.data.frame(summary(fit)$spec_pars)
+  sigma_df$Parameter <- rownames(sigma_df)
+  
+  combined <- bind_rows(fixed_df, sigma_df)
+  combined$Model <- model_label
+  
+  combined %>%
+    select(Model, Parameter, Estimate, Est.Error, `l-95% CI`, `u-95% CI`,
+           Rhat, Bulk_ESS, Tail_ESS)
+}
+
+params_inf_median <- extract_all_params_median(fit_informative_median, "Informative")
+params_skep_median <- extract_all_params_median(fit_skeptical_median, "Skeptical")
+
+full_table_median <- bind_rows(params_inf_median, params_skep_median)
+
+full_table_median$Parameter <- dplyr::recode(full_table_median$Parameter,
+                                             "Intercept" = "Intercept",
+                                             "c_BASELINE_ADAScog" = "Baseline",
+                                             "RandomisationiCST" = "Treatment",
+                                             "QCPR_median_groupAbovemedian" = "QCPR Group (Above median)",
+                                             "RandomisationiCST:QCPR_median_groupAbovemedian" = "Treatment x QCPR Group",
+                                             "sigma" = "Sigma"
+)
+
+param_order <- c("Intercept", "Baseline", "QCPR Group (Above median)", "Sigma",
+                 "Treatment", "Treatment x QCPR Group")
+full_table_median$Parameter <- factor(full_table_median$Parameter, levels = param_order)
+full_table_median$Model <- factor(full_table_median$Model, levels = c("Informative", "Skeptical"))
+
+draws_treat_inf_med <- as_draws_df(fit_informative_median)$b_RandomisationiCST
+draws_treat_skep_med <- as_draws_df(fit_skeptical_median)$b_RandomisationiCST
+draws_int_inf_med <- as_draws_df(fit_informative_median)$`b_RandomisationiCST:QCPR_median_groupAbovemedian`
+draws_int_skep_med <- as_draws_df(fit_skeptical_median)$`b_RandomisationiCST:QCPR_median_groupAbovemedian`
+
+prob_lookup_median <- tibble::tibble(
+  Model = c("Informative", "Informative", "Skeptical", "Skeptical"),
+  Parameter = c("Treatment", "Treatment x QCPR Group", "Treatment", "Treatment x QCPR Group"),
+  P_direction = c(
+    mean(draws_treat_inf_med < 0),
+    mean(draws_int_inf_med > 0),
+    mean(draws_treat_skep_med < 0),
+    mean(draws_int_skep_med > 0)
+  )
+)
+
+full_table_median <- full_table_median %>%
+  left_join(prob_lookup_median, by = c("Model", "Parameter")) %>%
+  arrange(Model, match(Parameter, param_order)) %>%
+  mutate(across(c(Estimate, Est.Error, `l-95% CI`, `u-95% CI`, Rhat, P_direction), ~round(.x, 3)),
+         across(c(Bulk_ESS, Tail_ESS), ~round(.x, 0)))
+
+print(full_table_median)
+
+write.csv(full_table_median, "model2_median_split_results_table_N256.csv", row.names = FALSE)
+
+full_gt_median <- full_table_median %>%
+  rename(`Est. Error` = Est.Error,
+         `Lower CrI` = `l-95% CI`,
+         `Upper CrI` = `u-95% CI`,
+         `Bulk ESS` = Bulk_ESS,
+         `Tail ESS` = Tail_ESS,
+         `R-hat` = Rhat,
+         `Posterior Probability` = P_direction) %>%
+  group_by(Model) %>%
+  gt() %>%
+  tab_header(
+    title = "Model 2 (Median-Split): Posterior Results",
+    subtitle = "ADAS-Cog at 26 weeks ~ Baseline ADAS-Cog + Randomisation x QCPR Group (N = 256)"
+  ) %>%
+  fmt_number(columns = c(Estimate, `Est. Error`, `Lower CrI`, `Upper CrI`,
+                         `R-hat`, `Posterior Probability`), decimals = 3) %>%
+  fmt_number(columns = c(`Bulk ESS`, `Tail ESS`), decimals = 0) %>%
+  sub_missing(columns = `Posterior Probability`, missing_text = "\u2014") %>%
+  cols_align(align = "center", columns = everything()) %>%
+  cols_align(align = "left", columns = Parameter) %>%
+  tab_source_note(
+    source_note = paste0("N = 256 (strict 3 SD outlier exclusion rule; qPIN 14201 and 17018 excluded). ",
+                         "QCPR median = ", round(qcpr_median, 0),
+                         ". Reference categories: TAU Control, Below median.")
+  )
+
+full_gt_median
+gtsave(full_gt_median, "model2_median_split_results_table_N256.png")
+
+library(bayesplot)
+library(ggplot2)
+
+trace_plot_median <- mcmc_trace(fit_informative_median,
+                                pars = c("b_Intercept", "b_c_BASELINE_ADAScog",
+                                         "b_RandomisationiCST",
+                                         "b_QCPR_median_groupAbovemedian",
+                                         "b_RandomisationiCST:QCPR_median_groupAbovemedian",
+                                         "sigma"),
+                                facet_args = list(labeller = as_labeller(c(
+                                  "b_Intercept" = "Intercept",
+                                  "b_c_BASELINE_ADAScog" = "Baseline ADAS-Cog",
+                                  "b_RandomisationiCST" = "Treatment",
+                                  "b_QCPR_median_groupAbovemedian" = "QCPR Group (Above median)",
+                                  "b_RandomisationiCST:QCPR_median_groupAbovemedian" = "Treatment x QCPR Group",
+                                  "sigma" = "Sigma"
+                                )))) +
+  theme_minimal(base_family = "Arial", base_size = 11) +
+  theme(
+    axis.title = element_text(size = 11, face = "bold"),
+    axis.text = element_text(size = 11, colour = "black"),
+    strip.text = element_text(size = 11, face = "bold"),
+    legend.position = "right"
+  )
+
+trace_plot_median
+
+ggsave("model2_median_traceplots_informative_N256.png", trace_plot_median,
+       width = 10, height = 10, dpi = 300)
+
+## ------------------------------------------------------------------
+## Model 2 (Median-Split, N=256): Full Results Table
+## Est. Error column removed; formatted in Arial 11.
+## ------------------------------------------------------------------
+
+library(dplyr)
+library(brms)
+library(gt)
+
+extract_all_params_median <- function(fit, model_label) {
+  fixed_df <- as.data.frame(summary(fit)$fixed)
+  fixed_df$Parameter <- rownames(fixed_df)
+  
+  sigma_df <- as.data.frame(summary(fit)$spec_pars)
+  sigma_df$Parameter <- rownames(sigma_df)
+  
+  combined <- bind_rows(fixed_df, sigma_df)
+  combined$Model <- model_label
+  
+  combined %>%
+    select(Model, Parameter, Estimate, `l-95% CI`, `u-95% CI`,
+           Rhat, Bulk_ESS, Tail_ESS)
+}
+
+params_inf_median <- extract_all_params_median(fit_informative_median, "Informative")
+params_skep_median <- extract_all_params_median(fit_skeptical_median, "Skeptical")
+
+full_table_median <- bind_rows(params_inf_median, params_skep_median)
+
+full_table_median$Parameter <- dplyr::recode(full_table_median$Parameter,
+                                             "Intercept" = "Intercept",
+                                             "c_BASELINE_ADAScog" = "Baseline",
+                                             "RandomisationiCST" = "Treatment",
+                                             "QCPR_median_groupAbovemedian" = "QCPR Group (Above median)",
+                                             "RandomisationiCST:QCPR_median_groupAbovemedian" = "Treatment x QCPR Group",
+                                             "sigma" = "Sigma"
+)
+
+param_order <- c("Intercept", "Baseline", "QCPR Group (Above median)", "Sigma",
+                 "Treatment", "Treatment x QCPR Group")
+full_table_median$Parameter <- factor(full_table_median$Parameter, levels = param_order)
+full_table_median$Model <- factor(full_table_median$Model, levels = c("Informative", "Skeptical"))
+
+draws_treat_inf_med <- as_draws_df(fit_informative_median)$b_RandomisationiCST
+draws_treat_skep_med <- as_draws_df(fit_skeptical_median)$b_RandomisationiCST
+draws_int_inf_med <- as_draws_df(fit_informative_median)$`b_RandomisationiCST:QCPR_median_groupAbovemedian`
+draws_int_skep_med <- as_draws_df(fit_skeptical_median)$`b_RandomisationiCST:QCPR_median_groupAbovemedian`
+
+prob_lookup_median <- tibble::tibble(
+  Model = c("Informative", "Informative", "Skeptical", "Skeptical"),
+  Parameter = c("Treatment", "Treatment x QCPR Group", "Treatment", "Treatment x QCPR Group"),
+  P_direction = c(
+    mean(draws_treat_inf_med < 0),
+    mean(draws_int_inf_med > 0),
+    mean(draws_treat_skep_med < 0),
+    mean(draws_int_skep_med > 0)
+  )
+)
+
+full_table_median <- full_table_median %>%
+  left_join(prob_lookup_median, by = c("Model", "Parameter")) %>%
+  arrange(Model, match(Parameter, param_order)) %>%
+  mutate(across(c(Estimate, `l-95% CI`, `u-95% CI`, Rhat, P_direction), ~round(.x, 2)),
+         across(c(Bulk_ESS, Tail_ESS), ~round(.x, 0)))
+
+print(full_table_median)
+
+write.csv(full_table_median, "model2_median_split_results_table_N256.csv", row.names = FALSE)
+
+full_gt_median <- full_table_median %>%
+  rename(`Lower CrI` = `l-95% CI`,
+         `Upper CrI` = `u-95% CI`,
+         `Bulk ESS` = Bulk_ESS,
+         `Tail ESS` = Tail_ESS,
+         `R-hat` = Rhat,
+         `Posterior Probability` = P_direction) %>%
+  group_by(Model) %>%
+  gt() %>%
+  tab_header(
+    title = "Model 2 (Median-Split): Posterior Results",
+    subtitle = "ADAS-Cog at 26 weeks ~ Baseline ADAS-Cog + Randomisation x QCPR Group (N = 256)"
+  ) %>%
+  fmt_number(columns = c(Estimate, `Lower CrI`, `Upper CrI`,
+                         `R-hat`, `Posterior Probability`), decimals = 2) %>%
+  fmt_number(columns = c(`Bulk ESS`, `Tail ESS`), decimals = 0) %>%
+  sub_missing(columns = `Posterior Probability`, missing_text = "\u2014") %>%
+  cols_align(align = "center", columns = everything()) %>%
+  cols_align(align = "left", columns = Parameter) %>%
+  tab_source_note(
+    source_note = paste0("N = 256 (strict 3 SD outlier exclusion rule; qPIN 14201 and 17018 excluded). ",
+                         "QCPR median = ", round(qcpr_median, 0),
+                         ". Reference categories: TAU Control, Below median.")
+  ) %>%
+  opt_table_font(font = "Arial") %>%
+  tab_options(
+    table.font.size = px(11),
+    heading.title.font.size = px(13),
+    heading.subtitle.font.size = px(11),
+    source_notes.font.size = px(9)
+  )
+
+full_gt_median
+gtsave(full_gt_median, "model2_median_split_results_table_N256.png")
+
+> # ------------------------------------------------------------------
+> # 2. Run the Welch's t-test
+  > # ------------------------------------------------------------------
+> 
+  > qcpr_ttest <- t.test(qcpr_change ~ Randomisation, data = dat)
+> qcpr_ttest

@@ -1,0 +1,13 @@
+"Model","Parameter","Estimate","l-95% CI","u-95% CI","Rhat","Bulk_ESS","Tail_ESS","P_direction"
+"Informative","Intercept",21.18,20.02,22.34,1,5449,6265,NA
+"Informative","Baseline",0.97,0.88,1.06,1,7196,5478,NA
+"Informative","QCPR Group (Above median)",-0.92,-2.78,0.91,1,4708,5542,NA
+"Informative","Sigma",5.44,4.96,5.98,1,6483,5479,NA
+"Informative","Treatment",-1.71,-3.37,0.01,1,5051,5327,0.97
+"Informative","Treatment x QCPR Group",2.03,-0.52,4.56,1,4134,5131,0.94
+"Skeptical","Intercept",21.04,19.83,22.19,1,6128,6153,NA
+"Skeptical","Baseline",0.97,0.88,1.06,1,7365,5635,NA
+"Skeptical","QCPR Group (Above median)",-0.76,-2.63,1.13,1,5313,5631,NA
+"Skeptical","Sigma",5.44,4.97,5.97,1,6622,5712,NA
+"Skeptical","Treatment",-1.35,-2.99,0.34,1,5464,5270,0.94
+"Skeptical","Treatment x QCPR Group",1.66,-0.92,4.12,1,4769,5247,0.9
