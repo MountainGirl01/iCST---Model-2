@@ -1,0 +1,7 @@
+"Model","Parameter","Estimate","l-95% CI","u-95% CI","Rhat","Bulk_ESS","Tail_ESS","P_direction"
+"Informative","Intercept",21,19.82,22.15,1,6080,6169,NA
+"Informative","Baseline",0.97,0.88,1.06,1,6491,5318,NA
+"Informative","QCPR Group (Above median)",-0.73,-2.6,1.18,1,5276,5503,NA
+"Informative","Sigma",5.35,4.88,5.88,1,6395,5629,NA
+"Informative","Treatment",-1.5,-3.13,0.14,1,5379,5835,0.96
+"Informative","Treatment x QCPR Group",1.82,-0.73,4.28,1,4546,5170,0.92
