@@ -2207,9 +2207,3 @@ full_gt_median <- full_table_median %>%
 full_gt_median
 gtsave(full_gt_median, "model2_median_split_results_table_N256.png")
 
-> # ------------------------------------------------------------------
-> # 2. Run the Welch's t-test
-  > # ------------------------------------------------------------------
-> 
-  > qcpr_ttest <- t.test(qcpr_change ~ Randomisation, data = dat)
-> qcpr_ttest

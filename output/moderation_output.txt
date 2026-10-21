@@ -1,0 +1,80 @@
+==== SOFTWARE ====
+R version 4.6.0 (2026-04-24)
+Platform: aarch64-apple-darwin23
+Running under: macOS Sonoma 14.6
+
+Matrix products: default
+BLAS:   /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib 
+LAPACK: /Library/Frameworks/R.framework/Versions/4.6/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.1
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+time zone: Australia/Sydney
+tzcode source: internal
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] bayesplot_1.16.0 tidybayes_3.0.7  gt_1.3.0         ggplot2_4.0.3    dplyr_1.2.1      brms_2.23.0     
+[7] Rcpp_1.1.1-1.1  
+
+loaded via a namespace (and not attached):
+ [1] gtable_0.3.6          tensorA_0.36.2.1      QuickJSR_1.10.0       ggrepel_0.9.8        
+ [5] inline_0.3.21         lattice_0.22-9        vctrs_0.7.3           tools_4.6.0          
+ [9] generics_0.1.4        stats4_4.6.0          curl_7.1.0            parallel_4.6.0       
+[13] tibble_3.3.1          pkgconfig_2.0.3       Matrix_1.7-5          checkmate_2.3.4      
+[17] RColorBrewer_1.1-3    S7_0.2.2              distributional_0.7.0  RcppParallel_5.1.11-2
+[21] lifecycle_1.0.5       compiler_4.6.0        farver_2.1.2          stringr_1.6.0        
+[25] Brobdingnag_1.2-9     codetools_0.2-20      htmltools_0.5.9       tidyr_1.3.2          
+[29] pillar_1.11.1         arrayhelpers_1.1-2    StanHeaders_2.32.10   bridgesampling_1.2-1 
+[33] abind_1.4-8           nlme_3.1-169          posterior_1.7.0       rstan_2.32.7         
+[37] svUnit_1.0.8          tidyselect_1.2.1      digest_0.6.39         mvtnorm_1.4-1        
+[41] stringi_1.8.7         gtsummary_2.6.0       purrr_1.2.2           fastmap_1.2.0        
+[45] grid_4.6.0            cli_3.6.6             magrittr_2.0.5        patchwork_1.3.2      
+[49] loo_2.10.1            cards_0.9.0           utf8_1.2.6            pkgbuild_1.4.8       
+[53] withr_3.0.2           scales_1.4.0          backports_1.5.1       lubridate_1.9.5      
+[57] timechange_0.4.0      estimability_2.0.0    matrixStats_1.5.0     emmeans_2.0.3        
+[61] gridExtra_2.3         coda_0.19-4.1         V8_8.2.0              ggdist_3.3.3         
+[65] rstantools_2.6.0      rlang_1.3.0           xtable_1.8-8          glue_1.8.1           
+[69] xml2_1.6.0            rstudioapi_0.19.0     jsonlite_2.0.0        R6_2.6.1             
+[73] fs_2.1.0             
+
+==== SAMPLE ====
+N analysed (informative): 256 
+N analysed (sceptical): 256 
+  Randomisation   n
+1   TAU Control 129
+2          iCST 127
+QCPR median: 59 
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  40.00   55.00   59.00   59.38   65.00   70.00 
+N exactly at median: 14 
+
+==== DESCRIPTIVES BY ARM ====
+# A tibble: 2 × 8
+  Randomisation     n ADAS_baseline_mean ADAS_baseline_sd ADAS_26wk_mean ADAS_26wk_sd QCPR_mean QCPR_sd
+  <fct>         <int>              <dbl>            <dbl>          <dbl>        <dbl>     <dbl>   <dbl>
+1 TAU Control     129               19.1             8.06           20.1         9.62      58.7    6.62
+2 iCST            127               20.3             7.93           20.4         8.96      60.1    6.25
+
+==== PRIORS: INFORMATIVE ====
+            prior     class                                  coef group resp dpar nlpar lb ub tag  source
+           (flat)         b                                                                       default
+ normal(0.5, 0.3)         b                    c_BASELINE_ADAScog                                    user
+ normal(-1.92, 2)         b                     RandomisationiCST                                    user
+     normal(0, 2)         b RandomisationiCST:z_BASELINE_CQCPR_20                                    user
+     normal(0, 2)         b                   z_BASELINE_CQCPR_20                                    user
+    normal(20, 4) Intercept                                                                          user
+     normal(9, 3)     sigma                                                              0           user
+
+==== PRIORS: SCEPTICAL ====
+            prior     class                                  coef group resp dpar nlpar lb ub tag  source
+           (flat)         b                                                                       default
+ normal(0.5, 0.3)         b                    c_BASELINE_ADAScog                                    user
+     normal(0, 2)         b                     RandomisationiCST                                    user
+     normal(0, 2)         b RandomisationiCST:z_BASELINE_CQCPR_20                                    user
+     normal(0, 2)         b                   z_BASELINE_CQCPR_20                                    user
+    normal(20, 4) Intercept                                                                          user
+     normal(9, 3)     sigma                                                              0           user
